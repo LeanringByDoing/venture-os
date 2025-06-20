@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 import altair as alt
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 # Connect to the database
 conn = sqlite3.connect("venture_os.db")
@@ -15,24 +15,29 @@ projects = pd.read_sql_query("SELECT * FROM Projects", conn)
 
 st.title("Venture OS – Command Center")
 
-# --- Add New Project UI ---
-st.sidebar.header("➕ Add New Project")
-with st.sidebar.form("add_project_form"):
-    name = st.text_input("Project Name")
-    proj_type = st.selectbox("Project Type", ["youtube", "tiktok", "flip", "bot", "custom"])
-    start_date = st.date_input("Start Date", value=date.today())
-    status = st.selectbox("Status", ["active", "paused", "retired"])
-    description = st.text_area("Project Description")
-    submitted = st.form_submit_button("Add Project")
-    if submitted:
+# --- Bot Command Console ---
+st.sidebar.header("🤖 Bot Command Console")
+with st.sidebar.form("bot_command_form"):
+    selected_project = st.selectbox("Project", projects["name"].tolist() if not projects.empty else [])
+    command = st.text_input("Bot Command")
+    submitted = st.form_submit_button("Send Command")
+
+    if submitted and selected_project and command:
+        project_id = projects[projects["name"] == selected_project]["project_id"].values[0]
+        action_id = str(uuid.uuid4())
+        timestamp = datetime.now().isoformat()
+
+        # Simulate bot response
+        simulated_response = f"Command '{command}' executed successfully for project '{selected_project}'."
+
         cursor.execute(
-            "INSERT INTO Projects (project_id, name, type, start_date, status, icon_url, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), name, proj_type, str(start_date), status, "", description)
+            "INSERT INTO AutomationActions (action_id, project_id, command, status, response, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+            (action_id, project_id, command, "completed", simulated_response, timestamp)
         )
         conn.commit()
-        st.success("✅ Project added! Refresh the page to view.")
+        st.success("✅ Command sent and logged!")
 
-# --- Display Existing Projects ---
+# --- Display Projects and Metrics ---
 st.subheader("📁 Active Projects")
 if not projects.empty:
     for _, project in projects.iterrows():
@@ -40,7 +45,7 @@ if not projects.empty:
         st.write(f"Status: {project['status']} | Started: {project['start_date']}")
         st.write(project['description'])
 
-        # Load metrics for this project
+        # Load metrics
         metrics = pd.read_sql_query(
             f"SELECT name, value, unit, timestamp FROM Metrics WHERE project_id = '{project['project_id']}'",
             conn
