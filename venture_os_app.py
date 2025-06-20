@@ -11,7 +11,7 @@ import openai
 conn = sqlite3.connect("venture_os.db")
 cursor = conn.cursor()
 
-# Auto-create tables
+# Ensure required tables exist
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS Logs (
     log_id TEXT PRIMARY KEY,
@@ -29,9 +29,27 @@ CREATE TABLE IF NOT EXISTS Metrics (
     unit TEXT,
     timestamp TEXT
 )""")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS Projects (
+    project_id TEXT PRIMARY KEY,
+    name TEXT,
+    type TEXT,
+    start_date TEXT,
+    status TEXT,
+    icon_url TEXT,
+    description TEXT
+)""")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS AutomationActions (
+    action_id TEXT PRIMARY KEY,
+    project_id TEXT,
+    command TEXT,
+    status TEXT,
+    response TEXT,
+    timestamp TEXT
+)""")
 conn.commit()
 
-# Load projects
 projects = pd.read_sql_query("SELECT * FROM Projects", conn)
 
 st.title("Venture OS – Command Center")
@@ -118,8 +136,8 @@ elif tab == "🧠 GPT Weekly Summary":
                 log_id = str(uuid.uuid4())
                 timestamp = datetime.now().isoformat()
                 cursor.execute(
-                    "INSERT INTO Logs (log_id, project_id, source, message, timestamp) VALUES (?, NULL, ?, ?, ?)",
-                    (log_id, "gpt", final_summary, timestamp)
+                    "INSERT INTO Logs (log_id, project_id, source, message, timestamp) VALUES (?, ?, ?, ?, ?)",
+                    (log_id, None, "gpt", final_summary, timestamp)
                 )
                 conn.commit()
                 st.sidebar.success("✅ Summary saved to logs.")
@@ -178,5 +196,4 @@ elif tab == "🤖 Bot Console":
             conn.commit()
             st.success("✅ Command simulated.")
 
-# Finalize
 conn.close()
