@@ -10,7 +10,7 @@ import openai
 conn = sqlite3.connect("venture_os.db")
 cursor = conn.cursor()
 
-# Auto-heal Logs table if schema is corrupt
+# === Auto-heal logs if needed ===
 try:
     cursor.execute("PRAGMA table_info(Logs)")
     cols = cursor.fetchall()
@@ -29,16 +29,7 @@ except:
         timestamp TEXT
     )""")
 
-# Create remaining tables
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS Metrics (
-    metric_id TEXT PRIMARY KEY,
-    project_id TEXT,
-    name TEXT,
-    value REAL,
-    unit TEXT,
-    timestamp TEXT
-)""")
+# === Tables ===
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS Projects (
     project_id TEXT PRIMARY KEY,
@@ -50,12 +41,38 @@ CREATE TABLE IF NOT EXISTS Projects (
     description TEXT
 )""")
 cursor.execute("""
+CREATE TABLE IF NOT EXISTS Metrics (
+    metric_id TEXT PRIMARY KEY,
+    project_id TEXT,
+    name TEXT,
+    value REAL,
+    unit TEXT,
+    timestamp TEXT
+)""")
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS AutomationActions (
     action_id TEXT PRIMARY KEY,
     project_id TEXT,
     command TEXT,
     status TEXT,
     response TEXT,
+    timestamp TEXT
+)""")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS Bots (
+    bot_id TEXT PRIMARY KEY,
+    project_id TEXT,
+    name TEXT,
+    last_checkin TEXT,
+    status TEXT
+)""")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS Alerts (
+    alert_id TEXT PRIMARY KEY,
+    project_id TEXT,
+    type TEXT,
+    message TEXT,
+    resolved INTEGER,
     timestamp TEXT
 )""")
 conn.commit()
@@ -70,8 +87,11 @@ tab = st.sidebar.radio("Select Tool", [
     "🧠 GPT Weekly Summary",
     "📜 View Logs",
     "🧾 Project History",
-    "🤖 Bot Console"
+    "🤖 Bot Console",
+    "🛎 Alerts Center"
 ])
+
+# === Tools ===
 
 if tab == "➕ Add Project":
     with st.sidebar.form("add_project_form"):
@@ -82,12 +102,17 @@ if tab == "➕ Add Project":
         description = st.text_area("Project Description")
         submitted = st.form_submit_button("Add Project")
         if submitted:
+            pid = str(uuid.uuid4())
             cursor.execute(
                 "INSERT INTO Projects (project_id, name, type, start_date, status, icon_url, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (str(uuid.uuid4()), name, proj_type, str(start_date), status, "", description)
+                (pid, name, proj_type, str(start_date), status, "", description)
+            )
+            cursor.execute(
+                "INSERT INTO Bots (bot_id, project_id, name, last_checkin, status) VALUES (?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), pid, f"{name} Bot", datetime.now().isoformat(), "offline")
             )
             conn.commit()
-            st.success("✅ Project added! Refresh to view.")
+            st.success("✅ Project & Bot added!")
 
 elif tab == "📥 Manual Metric Entry":
     with st.sidebar.form("manual_metric"):
@@ -154,15 +179,12 @@ elif tab == "🧠 GPT Weekly Summary":
         st.sidebar.warning("Enter OpenAI API key to generate summary.")
 
 elif tab == "📜 View Logs":
-    try:
-        logs = pd.read_sql_query("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
-        if logs.empty:
-            st.info("No logs found.")
-        else:
-            logs['timestamp'] = pd.to_datetime(logs['timestamp'])
-            st.dataframe(logs[["timestamp", "source", "message"]])
-    except Exception as e:
-        st.error("Log table is missing or corrupt. Reload app or check database.")
+    logs = pd.read_sql_query("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
+    if logs.empty:
+        st.info("No logs found.")
+    else:
+        logs['timestamp'] = pd.to_datetime(logs['timestamp'])
+        st.dataframe(logs[["timestamp", "source", "message"]])
 
 elif tab == "🧾 Project History":
     for _, project in projects.iterrows():
@@ -183,24 +205,52 @@ elif tab == "🧾 Project History":
                     tooltip=['timestamp:T', 'value:Q']
                 ).properties(title=f"{metric_name}")
                 st.altair_chart(chart, use_container_width=True)
-        else:
-            st.info("No metrics for this project.")
 
 elif tab == "🤖 Bot Console":
-    with st.sidebar.form("bot_form"):
-        selected_project = st.selectbox("Project", projects["name"].tolist() if not projects.empty else [])
-        command = st.text_input("Bot Command")
-        submitted = st.form_submit_button("Send")
-        if submitted and selected_project and command:
-            project_id = projects[projects["name"] == selected_project]["project_id"].values[0]
-            action_id = str(uuid.uuid4())
-            timestamp = datetime.now().isoformat()
-            response = f"Simulated: '{command}' sent to '{selected_project}'"
-            cursor.execute(
-                "INSERT INTO AutomationActions (action_id, project_id, command, status, response, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                (action_id, project_id, command, "completed", response, timestamp)
-            )
-            conn.commit()
-            st.success("✅ Command simulated.")
+    st.markdown("### 🤖 Bot Command Interface")
+    bots = pd.read_sql_query("SELECT * FROM Bots", conn)
+    if not bots.empty:
+        for _, row in bots.iterrows():
+            st.markdown(f"**{row['name']}** ({row['status']})")
+            with st.form(f"bot_{row['bot_id']}"):
+                cmd = st.text_input("Command", key=f"cmd_{row['bot_id']}")
+                if st.form_submit_button("Send Command"):
+                    action_id = str(uuid.uuid4())
+                    timestamp = datetime.now().isoformat()
+                    response = f"Simulated response to '{cmd}'"
+                    cursor.execute(
+                        "INSERT INTO AutomationActions (action_id, project_id, command, status, response, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                        (action_id, row["project_id"], cmd, "completed", response, timestamp)
+                    )
+                    cursor.execute(
+                        "UPDATE Bots SET last_checkin = ?, status = ? WHERE bot_id = ?",
+                        (timestamp, "online", row["bot_id"])
+                    )
+                    conn.commit()
+                    st.success(f"✅ Bot responded: {response}")
 
+elif tab == "🛎 Alerts Center":
+    st.markdown("### 🔔 Alert Feed")
+    alerts = pd.read_sql_query("SELECT * FROM Alerts ORDER BY timestamp DESC", conn)
+    if alerts.empty:
+        st.info("No alerts yet.")
+    else:
+        alerts['timestamp'] = pd.to_datetime(alerts['timestamp'])
+        for _, alert in alerts.iterrows():
+            if not alert["resolved"]:
+                st.warning(f"[{alert['timestamp'].strftime('%Y-%m-%d %H:%M')}] {alert['message']}")
+
+# Simulated auto-alert if any project has no metric in 3 days
+for _, proj in projects.iterrows():
+    pid = proj["project_id"]
+    recent = pd.read_sql_query(f"SELECT * FROM Metrics WHERE project_id = '{pid}' ORDER BY timestamp DESC LIMIT 1", conn)
+    if recent.empty or (datetime.now() - datetime.fromisoformat(recent['timestamp'].values[0])).days > 3:
+        message = f"Project '{proj['name']}' has no metrics in over 3 days."
+        existing = pd.read_sql_query(f"SELECT * FROM Alerts WHERE project_id = '{pid}' AND message = '{message}'", conn)
+        if existing.empty:
+            cursor.execute(
+                "INSERT INTO Alerts (alert_id, project_id, type, message, resolved, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), pid, "no-metrics", message, 0, datetime.now().isoformat())
+            )
+conn.commit()
 conn.close()
