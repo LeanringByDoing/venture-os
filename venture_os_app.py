@@ -77,9 +77,7 @@ elif tab == "🧠 GPT Weekly Summary":
         )
 
         if not recent_metrics.empty:
-            summary_text = """You are a startup performance analyst. Summarize the following weekly project metrics:
-
-"""
+            summary_text = """You are a startup performance analyst. Summarize the following weekly project metrics:\n\n"""
             for project in recent_metrics["project_name"].unique():
                 summary_text += f"Project: {project}\n"
                 project_data = recent_metrics[recent_metrics["project_name"] == project]
@@ -89,7 +87,7 @@ elif tab == "🧠 GPT Weekly Summary":
                 summary_text += "\n"
 
             response = client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You analyze startup project metrics and write smart, concise weekly summaries."},
                     {"role": "user", "content": summary_text}
