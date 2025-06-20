@@ -1,1 +1,1 @@
-# Placeholder: this would be the actual Streamlit app with Save Summary feature (reinserted from last run)
+# Venture OS app final version would be reinserted here (GPT summary + Save to Logs)
