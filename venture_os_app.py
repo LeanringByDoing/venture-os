@@ -63,7 +63,7 @@ elif tab == "🤖 Bot Console":
 elif tab == "🧠 GPT Weekly Summary":
     openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
     if openai_api_key:
-        openai.api_key = openai_api_key
+        client = openai.OpenAI(api_key=openai_api_key)
 
         one_week_ago = (datetime.now() - timedelta(days=7)).isoformat()
         recent_metrics = pd.read_sql_query(
@@ -77,10 +77,7 @@ elif tab == "🧠 GPT Weekly Summary":
         )
 
         if not recent_metrics.empty:
-            # Format prompt for GPT
-            summary_text = """
-You are a startup performance analyst. Summarize the following weekly project metrics:
-
+            summary_text = """You are a startup performance analyst. Summarize the following weekly project metrics:
 
 """
             for project in recent_metrics["project_name"].unique():
@@ -91,7 +88,7 @@ You are a startup performance analyst. Summarize the following weekly project me
                     summary_text += f"  - {metric_name}: {values.sum():.2f}\n"
                 summary_text += "\n"
 
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
                     {"role": "system", "content": "You analyze startup project metrics and write smart, concise weekly summaries."},
@@ -101,7 +98,7 @@ You are a startup performance analyst. Summarize the following weekly project me
             )
 
             st.sidebar.markdown("### 📋 GPT Summary")
-            st.sidebar.markdown(response["choices"][0]["message"]["content"])
+            st.sidebar.markdown(response.choices[0].message.content)
         else:
             st.sidebar.info("No metrics in the last 7 days.")
     else:
