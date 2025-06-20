@@ -5,6 +5,7 @@ import pandas as pd
 import altair as alt
 import uuid
 from datetime import date, datetime, timedelta
+import openai
 
 # Connect to the database
 conn = sqlite3.connect("venture_os.db")
@@ -60,33 +61,49 @@ elif tab == "🤖 Bot Console":
 
 # --- GPT Weekly Summary Tab ---
 elif tab == "🧠 GPT Weekly Summary":
-    st.sidebar.markdown("Simulated summary based on metrics from the last 7 days.")
-    st.sidebar.write("🧠 Coming soon: Real OpenAI integration.")
-    summary_output = ""
+    openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
+    if openai_api_key:
+        openai.api_key = openai_api_key
 
-    one_week_ago = (datetime.now() - timedelta(days=7)).isoformat()
-    recent_metrics = pd.read_sql_query(
-        f"""
-        SELECT P.name as project_name, M.name, M.value, M.unit, M.timestamp
-        FROM Metrics M
-        JOIN Projects P ON M.project_id = P.project_id
-        WHERE M.timestamp >= '{one_week_ago}'
-        ORDER BY M.timestamp DESC
-        """, conn
-    )
+        one_week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+        recent_metrics = pd.read_sql_query(
+            f"""
+            SELECT P.name as project_name, M.name, M.value, M.unit, M.timestamp
+            FROM Metrics M
+            JOIN Projects P ON M.project_id = P.project_id
+            WHERE M.timestamp >= '{one_week_ago}'
+            ORDER BY M.timestamp DESC
+            """, conn
+        )
 
-    if not recent_metrics.empty:
-        summary_output += "**🧾 Weekly Performance Summary**\n\n"
-        for project in recent_metrics["project_name"].unique():
-            summary_output += f"### 📂 {project}\n"
-            project_data = recent_metrics[recent_metrics["project_name"] == project]
-            for metric_name in project_data["name"].unique():
-                values = project_data[project_data["name"] == metric_name]["value"]
-                summary_output += f"- {metric_name.capitalize()}: {values.sum():.2f} total\n"
-            summary_output += "\n"
-        st.sidebar.markdown(summary_output)
+        if not recent_metrics.empty:
+            # Format prompt for GPT
+            summary_text = "You are a startup performance analyst. Summarize the following weekly project metrics:
+
+"
+            for project in recent_metrics["project_name"].unique():
+                summary_text += f"Project: {project}\n"
+                project_data = recent_metrics[recent_metrics["project_name"] == project]
+                for metric_name in project_data["name"].unique():
+                    values = project_data[project_data["name"] == metric_name]["value"]
+                    summary_text += f"  - {metric_name}: {values.sum():.2f}\n"
+                summary_text += "\n"
+
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You analyze startup project metrics and write smart, concise weekly summaries."},
+                    {"role": "user", "content": summary_text}
+                ],
+                max_tokens=300
+            )
+
+            st.sidebar.markdown("### 📋 GPT Summary")
+            st.sidebar.markdown(response["choices"][0]["message"]["content"])
+        else:
+            st.sidebar.info("No metrics in the last 7 days.")
     else:
-        st.sidebar.info("No metrics in the last 7 days.")
+        st.sidebar.warning("Enter your OpenAI API key to generate a GPT summary.")
 
 # --- Display Existing Projects and Metrics ---
 st.subheader("📁 Active Projects")
