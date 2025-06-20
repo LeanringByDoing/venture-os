@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 import altair as alt
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 # Connect to the database
 conn = sqlite3.connect("venture_os.db")
@@ -17,8 +17,9 @@ st.title("Venture OS – Command Center")
 
 # --- Sidebar Tabs ---
 st.sidebar.title("🛠 Tools")
-tab = st.sidebar.radio("Select Tool", ["➕ Add Project", "🤖 Bot Console"])
+tab = st.sidebar.radio("Select Tool", ["➕ Add Project", "🤖 Bot Console", "🧠 GPT Weekly Summary"])
 
+# --- Add Project Tab ---
 if tab == "➕ Add Project":
     with st.sidebar.form("add_project_form"):
         name = st.text_input("Project Name")
@@ -35,6 +36,7 @@ if tab == "➕ Add Project":
             conn.commit()
             st.success("✅ Project added! Refresh the page to view.")
 
+# --- Bot Command Console Tab ---
 elif tab == "🤖 Bot Console":
     with st.sidebar.form("bot_command_form"):
         selected_project = st.selectbox("Project", projects["name"].tolist() if not projects.empty else [])
@@ -55,6 +57,36 @@ elif tab == "🤖 Bot Console":
             )
             conn.commit()
             st.success("✅ Command sent and logged!")
+
+# --- GPT Weekly Summary Tab ---
+elif tab == "🧠 GPT Weekly Summary":
+    st.sidebar.markdown("Simulated summary based on metrics from the last 7 days.")
+    st.sidebar.write("🧠 Coming soon: Real OpenAI integration.")
+    summary_output = ""
+
+    one_week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+    recent_metrics = pd.read_sql_query(
+        f"""
+        SELECT P.name as project_name, M.name, M.value, M.unit, M.timestamp
+        FROM Metrics M
+        JOIN Projects P ON M.project_id = P.project_id
+        WHERE M.timestamp >= '{one_week_ago}'
+        ORDER BY M.timestamp DESC
+        """, conn
+    )
+
+    if not recent_metrics.empty:
+        summary_output += "**🧾 Weekly Performance Summary**\n\n"
+        for project in recent_metrics["project_name"].unique():
+            summary_output += f"### 📂 {project}\n"
+            project_data = recent_metrics[recent_metrics["project_name"] == project]
+            for metric_name in project_data["name"].unique():
+                values = project_data[project_data["name"] == metric_name]["value"]
+                summary_output += f"- {metric_name.capitalize()}: {values.sum():.2f} total\n"
+            summary_output += "\n"
+        st.sidebar.markdown(summary_output)
+    else:
+        st.sidebar.info("No metrics in the last 7 days.")
 
 # --- Display Existing Projects and Metrics ---
 st.subheader("📁 Active Projects")
