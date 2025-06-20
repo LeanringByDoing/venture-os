@@ -7,11 +7,9 @@ import uuid
 from datetime import date, datetime, timedelta
 import openai
 
-# Connect to the database
 conn = sqlite3.connect("venture_os.db")
 cursor = conn.cursor()
 
-# Ensure required tables exist
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS Logs (
     log_id TEXT PRIMARY KEY,
@@ -63,7 +61,6 @@ tab = st.sidebar.radio("Select Tool", [
     "🤖 Bot Console"
 ])
 
-# ➕ Add Project
 if tab == "➕ Add Project":
     with st.sidebar.form("add_project_form"):
         name = st.text_input("Project Name")
@@ -80,7 +77,6 @@ if tab == "➕ Add Project":
             conn.commit()
             st.success("✅ Project added! Refresh to view.")
 
-# 📥 Manual Metric Entry
 elif tab == "📥 Manual Metric Entry":
     with st.sidebar.form("manual_metric"):
         selected = st.selectbox("Project", projects["name"].tolist() if not projects.empty else [])
@@ -97,7 +93,6 @@ elif tab == "📥 Manual Metric Entry":
             conn.commit()
             st.success("✅ Metric saved!")
 
-# 🧠 GPT Summary
 elif tab == "🧠 GPT Weekly Summary":
     openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
     if openai_api_key:
@@ -136,8 +131,8 @@ elif tab == "🧠 GPT Weekly Summary":
                 log_id = str(uuid.uuid4())
                 timestamp = datetime.now().isoformat()
                 cursor.execute(
-                    "INSERT INTO Logs (log_id, project_id, source, message, timestamp) VALUES (?, ?, ?, ?, ?)",
-                    (log_id, None, "gpt", final_summary, timestamp)
+                    "INSERT INTO Logs (log_id, source, message, timestamp) VALUES (?, ?, ?, ?)",
+                    (log_id, "gpt", final_summary, timestamp)
                 )
                 conn.commit()
                 st.sidebar.success("✅ Summary saved to logs.")
@@ -146,7 +141,6 @@ elif tab == "🧠 GPT Weekly Summary":
     else:
         st.sidebar.warning("Enter OpenAI API key to generate summary.")
 
-# 📜 View Logs
 elif tab == "📜 View Logs":
     logs = pd.read_sql_query("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
     if logs.empty:
@@ -155,7 +149,6 @@ elif tab == "📜 View Logs":
         logs['timestamp'] = pd.to_datetime(logs['timestamp'])
         st.dataframe(logs[["timestamp", "source", "message"]])
 
-# 🧾 Project History
 elif tab == "🧾 Project History":
     for _, project in projects.iterrows():
         st.markdown(f"## {project['name']}")
@@ -178,7 +171,6 @@ elif tab == "🧾 Project History":
         else:
             st.info("No metrics for this project.")
 
-# 🤖 Bot Console
 elif tab == "🤖 Bot Console":
     with st.sidebar.form("bot_form"):
         selected_project = st.selectbox("Project", projects["name"].tolist() if not projects.empty else [])
