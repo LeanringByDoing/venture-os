@@ -11,16 +11,28 @@ import openai
 conn = sqlite3.connect("venture_os.db")
 cursor = conn.cursor()
 
+# --- Auto-patch: ensure Logs table exists ---
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS Logs (
+    log_id TEXT PRIMARY KEY,
+    project_id TEXT,
+    source TEXT,
+    message TEXT,
+    timestamp TEXT
+)
+""")
+conn.commit()
+
 # Load projects
 projects = pd.read_sql_query("SELECT * FROM Projects", conn)
 
 st.title("Venture OS – Command Center")
 
-# --- Sidebar Tabs ---
+# Sidebar Tabs
 st.sidebar.title("🛠 Tools")
 tab = st.sidebar.radio("Select Tool", ["➕ Add Project", "🤖 Bot Console", "🧠 GPT Weekly Summary"])
 
-# --- Add Project Tab ---
+# Add Project
 if tab == "➕ Add Project":
     with st.sidebar.form("add_project_form"):
         name = st.text_input("Project Name")
@@ -37,7 +49,7 @@ if tab == "➕ Add Project":
             conn.commit()
             st.success("✅ Project added! Refresh the page to view.")
 
-# --- Bot Command Console Tab ---
+# Bot Console
 elif tab == "🤖 Bot Console":
     with st.sidebar.form("bot_command_form"):
         selected_project = st.selectbox("Project", projects["name"].tolist() if not projects.empty else [])
@@ -48,9 +60,7 @@ elif tab == "🤖 Bot Console":
             project_id = projects[projects["name"] == selected_project]["project_id"].values[0]
             action_id = str(uuid.uuid4())
             timestamp = datetime.now().isoformat()
-
             simulated_response = f"Command '{command}' executed successfully for project '{selected_project}'."
-
             cursor.execute(
                 "INSERT INTO AutomationActions (action_id, project_id, command, status, response, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
                 (action_id, project_id, command, "completed", simulated_response, timestamp)
@@ -58,12 +68,11 @@ elif tab == "🤖 Bot Console":
             conn.commit()
             st.success("✅ Command sent and logged!")
 
-# --- GPT Weekly Summary Tab ---
+# GPT Summary
 elif tab == "🧠 GPT Weekly Summary":
     openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
     if openai_api_key:
         client = openai.OpenAI(api_key=openai_api_key)
-
         one_week_ago = (datetime.now() - timedelta(days=7)).isoformat()
         recent_metrics = pd.read_sql_query(
             f"""
@@ -76,7 +85,7 @@ elif tab == "🧠 GPT Weekly Summary":
         )
 
         if not recent_metrics.empty:
-            summary_text = """You are a startup performance analyst. Summarize the following weekly project metrics:\n\n"""
+            summary_text = "You are a startup performance analyst. Summarize the following weekly project metrics:\n\n"
             for project in recent_metrics["project_name"].unique():
                 summary_text += f"Project: {project}\n"
                 project_data = recent_metrics[recent_metrics["project_name"] == project]
@@ -112,7 +121,7 @@ elif tab == "🧠 GPT Weekly Summary":
     else:
         st.sidebar.warning("Enter your OpenAI API key to generate a GPT summary.")
 
-# --- Display Existing Projects and Metrics ---
+# Display Projects and Metrics
 st.subheader("📁 Active Projects")
 if not projects.empty:
     for _, project in projects.iterrows():
@@ -134,9 +143,7 @@ if not projects.empty:
                     x='timestamp:T',
                     y='value:Q',
                     tooltip=['timestamp:T', 'value:Q']
-                ).properties(
-                    title=f"{metric_name.capitalize()} over Time"
-                )
+                ).properties(title=f"{metric_name.capitalize()} over Time")
                 st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No metrics found for this project.")
