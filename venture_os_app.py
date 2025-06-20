@@ -78,11 +78,9 @@ elif tab == "🧠 GPT Weekly Summary":
 
         if not recent_metrics.empty:
             # Format prompt for GPT
-            summary_text = """
-You are a startup performance analyst. Summarize the following weekly project metrics:
+            summary_text = "You are a startup performance analyst. Summarize the following weekly project metrics:
 
-
-"""
+"
             for project in recent_metrics["project_name"].unique():
                 summary_text += f"Project: {project}\n"
                 project_data = recent_metrics[recent_metrics["project_name"] == project]
