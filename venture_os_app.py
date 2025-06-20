@@ -15,29 +15,48 @@ projects = pd.read_sql_query("SELECT * FROM Projects", conn)
 
 st.title("Venture OS – Command Center")
 
-# --- Bot Command Console ---
-st.sidebar.header("🤖 Bot Command Console")
-with st.sidebar.form("bot_command_form"):
-    selected_project = st.selectbox("Project", projects["name"].tolist() if not projects.empty else [])
-    command = st.text_input("Bot Command")
-    submitted = st.form_submit_button("Send Command")
+# --- Sidebar Tabs ---
+st.sidebar.title("🛠 Tools")
+tab = st.sidebar.radio("Select Tool", ["➕ Add Project", "🤖 Bot Console"])
 
-    if submitted and selected_project and command:
-        project_id = projects[projects["name"] == selected_project]["project_id"].values[0]
-        action_id = str(uuid.uuid4())
-        timestamp = datetime.now().isoformat()
+if tab == "➕ Add Project":
+    with st.sidebar.form("add_project_form"):
+        name = st.text_input("Project Name")
+        proj_type = st.selectbox("Project Type", ["youtube", "tiktok", "flip", "bot", "custom"])
+        start_date = st.date_input("Start Date", value=date.today())
+        status = st.selectbox("Status", ["active", "paused", "retired"])
+        description = st.text_area("Project Description")
+        submitted = st.form_submit_button("Add Project")
+        if submitted:
+            cursor.execute(
+                "INSERT INTO Projects (project_id, name, type, start_date, status, icon_url, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), name, proj_type, str(start_date), status, "", description)
+            )
+            conn.commit()
+            st.success("✅ Project added! Refresh the page to view.")
 
-        # Simulate bot response
-        simulated_response = f"Command '{command}' executed successfully for project '{selected_project}'."
+elif tab == "🤖 Bot Console":
+    with st.sidebar.form("bot_command_form"):
+        selected_project = st.selectbox("Project", projects["name"].tolist() if not projects.empty else [])
+        command = st.text_input("Bot Command")
+        submitted = st.form_submit_button("Send Command")
 
-        cursor.execute(
-            "INSERT INTO AutomationActions (action_id, project_id, command, status, response, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-            (action_id, project_id, command, "completed", simulated_response, timestamp)
-        )
-        conn.commit()
-        st.success("✅ Command sent and logged!")
+        if submitted and selected_project and command:
+            project_id = projects[projects["name"] == selected_project]["project_id"].values[0]
+            action_id = str(uuid.uuid4())
+            timestamp = datetime.now().isoformat()
 
-# --- Display Projects and Metrics ---
+            # Simulate bot response
+            simulated_response = f"Command '{command}' executed successfully for project '{selected_project}'."
+
+            cursor.execute(
+                "INSERT INTO AutomationActions (action_id, project_id, command, status, response, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                (action_id, project_id, command, "completed", simulated_response, timestamp)
+            )
+            conn.commit()
+            st.success("✅ Command sent and logged!")
+
+# --- Display Existing Projects and Metrics ---
 st.subheader("📁 Active Projects")
 if not projects.empty:
     for _, project in projects.iterrows():
