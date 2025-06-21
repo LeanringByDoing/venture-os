@@ -1,12 +1,13 @@
-# Venture OS (Sidebar Fix Build)
+# Venture OS – Full Functional Build
 
-- All sidebar tabs restored
-- Case-insensitive, non-duplicating metrics
-- Logs table enforced
-- GPT summary, bot console, alerts working
+This is the complete working app:
+- Sidebar tabs fully wired
+- Metric casing & update logic fixed
+- Logs guaranteed
+- Bot console & GPT summary live
 
-To run:
-```
+## Run Locally:
+```bash
 pip install -r requirements.txt
 streamlit run venture_os_app.py
 ```
