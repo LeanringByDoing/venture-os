@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta
 import requests
 
-# --- DB Setup ---
+# Connect and setup database
 conn = sqlite3.connect("venture_os.db")
 cursor = conn.cursor()
 cursor.executescript("""
@@ -42,11 +42,11 @@ CREATE TABLE IF NOT EXISTS AlertRules (
 """)
 conn.commit()
 
-# --- Auto-seed demo if empty ---
+# Seed demo data
 if pd.read_sql("SELECT COUNT(*) as count FROM Projects", conn)["count"][0] == 0:
     pid = str(uuid.uuid4())
     cursor.execute("INSERT INTO Projects VALUES (?, ?, ?, ?, ?, ?, ?)", (
-        pid, "Demo Project", "bot", str(datetime.now().date()), "active", "", "Auto-seeded project"
+        pid, "Demo Project", "bot", str(datetime.now().date()), "active", "", "Seeded for testing"
     ))
     cursor.execute("INSERT INTO Bots VALUES (?, ?, ?, ?, ?, ?)", (
         str(uuid.uuid4()), pid, "Demo Bot", datetime.now().isoformat(), "offline", ""
@@ -54,16 +54,16 @@ if pd.read_sql("SELECT COUNT(*) as count FROM Projects", conn)["count"][0] == 0:
     conn.commit()
 
 st.set_page_config(layout="wide")
-st.title("🧭 Venture OS – Unified Command")
+st.title("🧭 Venture OS")
 
 tab = st.sidebar.radio("Navigate", [
-    "➕ Add Project", "📥 Metrics", "🧠 GPT Summary", "🤖 Bot Console",
-    "📜 Logs", "🛎 Alerts", "⚙️ Alert Rules"
+    "➕ Add Project", "📥 Metrics", "🧠 GPT Summary",
+    "🤖 Bot Console", "📜 Logs", "🛎 Alerts", "⚙️ Alert Rules"
 ])
 
 projects = pd.read_sql("SELECT * FROM Projects", conn)
 
-# --- Add Project ---
+# Add Project
 if tab == "➕ Add Project":
     with st.form("add_project"):
         name = st.text_input("Project Name")
@@ -82,7 +82,7 @@ if tab == "➕ Add Project":
             conn.commit()
             st.success("Project created!")
 
-# --- Metrics ---
+# Metrics tab
 elif tab == "📥 Metrics":
     if not projects.empty:
         with st.form("metrics"):
@@ -98,7 +98,19 @@ elif tab == "📥 Metrics":
                 conn.commit()
                 st.success("Saved.")
 
-# --- GPT Summary ---
+        st.markdown("---")
+        st.subheader("📊 Project Metrics")
+        for pid in projects["project_id"]:
+            project_metrics = pd.read_sql(f"""
+                SELECT name, value, unit, timestamp FROM Metrics
+                WHERE project_id = '{pid}' ORDER BY timestamp DESC
+            """, conn)
+            project_name = projects[projects["project_id"] == pid]["name"].values[0]
+            if not project_metrics.empty:
+                st.markdown(f"#### {project_name}")
+                st.dataframe(project_metrics, use_container_width=True)
+
+# GPT Summary
 elif tab == "🧠 GPT Summary":
     key = st.text_input("OpenAI API Key", type="password")
     if key:
@@ -134,7 +146,7 @@ elif tab == "🧠 GPT Summary":
         else:
             st.info("No recent metrics.")
 
-# --- Bot Console ---
+# Bot Console
 elif tab == "🤖 Bot Console":
     bots = pd.read_sql("SELECT * FROM Bots", conn)
     for _, bot in bots.iterrows():
@@ -163,19 +175,19 @@ elif tab == "🤖 Bot Console":
                 conn.commit()
                 st.success(f"Bot Reply: {reply}")
 
-# --- Logs ---
+# Logs tab
 elif tab == "📜 Logs":
     logs = pd.read_sql("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
     st.dataframe(logs, use_container_width=True)
 
-# --- Alerts ---
+# Alerts tab
 elif tab == "🛎 Alerts":
     alerts = pd.read_sql("SELECT * FROM Alerts ORDER BY timestamp DESC", conn)
     for _, row in alerts.iterrows():
         alert = f"{row['timestamp']} – {row['message']}"
         st.warning("✅ " + alert if row["resolved"] else alert)
 
-# --- Alert Rules ---
+# Alert Rules
 elif tab == "⚙️ Alert Rules":
     if not projects.empty:
         with st.form("add_rule"):
@@ -191,7 +203,7 @@ elif tab == "⚙️ Alert Rules":
                 conn.commit()
                 st.success("Rule added.")
 
-# --- Trigger Checks ---
+# Run alerts after all
 rules = pd.read_sql("SELECT * FROM AlertRules", conn)
 for _, rule in rules.iterrows():
     q = f"""
@@ -205,7 +217,13 @@ for _, rule in rules.iterrows():
             (rule["threshold_type"] == "above" and val > rule["threshold_value"]) or
             (rule["threshold_type"] == "below" and val < rule["threshold_value"])
         )
-        if triggered:
+        exists = pd.read_sql(f"""
+            SELECT COUNT(*) as count FROM Alerts
+            WHERE project_id = '{rule['project_id']}'
+            AND message LIKE '%{rule["metric_name"]}%'
+            AND resolved = 0
+        """, conn)["count"][0]
+        if triggered and exists == 0:
             cursor.execute("INSERT INTO Alerts VALUES (?, ?, ?, ?, ?, ?)", (
                 str(uuid.uuid4()), rule["project_id"], "threshold",
                 f"{rule['metric_name']} {rule['threshold_type']} {rule['threshold_value']} (was {val})",
