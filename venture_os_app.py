@@ -10,11 +10,9 @@ import os
 st.set_page_config(layout="wide")
 st.title("🧭 Venture OS")
 
-# DB connection
 conn = sqlite3.connect("venture_os.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Ensure tables
 cursor.execute("""CREATE TABLE IF NOT EXISTS Projects (
     project_id TEXT PRIMARY KEY,
     name TEXT, type TEXT, start_date TEXT,
@@ -35,17 +33,11 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Bots (
     project_id TEXT, name TEXT,
     status TEXT, last_checkin TEXT
 )""")
-cursor.execute("""CREATE TABLE IF NOT EXISTS Alerts (
-    alert_id TEXT PRIMARY KEY,
-    project_id TEXT, metric TEXT,
-    condition TEXT, threshold REAL,
-    message TEXT, triggered_at TEXT
-)""")
 conn.commit()
 
 tab = st.sidebar.radio("Navigate", [
     "➕ Add Project", "📥 Metrics", "🧠 GPT Summary",
-    "🤖 Bot Console", "📜 Logs", "🛎 Alerts", "⚙️ Alert Rules"
+    "🤖 Bot Console", "📜 Logs"
 ])
 
 if tab == "➕ Add Project":
@@ -71,26 +63,32 @@ elif tab == "📥 Metrics":
     else:
         project = st.selectbox("Select Project", df["name"])
         pid = df[df["name"] == project]["project_id"].values[0]
+        existing_metrics = pd.read_sql(f"SELECT DISTINCT name FROM Metrics WHERE project_id = '{pid}'", conn)
+        options = sorted(existing_metrics["name"].tolist()) if not existing_metrics.empty else []
+        metric = st.selectbox("Metric Name", options + ["(New Metric)"])
+        new_metric = ""
+        if metric == "(New Metric)":
+            new_metric = st.text_input("Enter New Metric").strip().lower()
+        name_to_use = new_metric if new_metric else metric
         with st.form("add_metric_form"):
-            metric = st.text_input("Metric Name").strip().lower()
             val = st.number_input("Value", step=1.0)
             unit = st.text_input("Unit (e.g., views, dollars)")
             submitted = st.form_submit_button("Submit")
             if submitted:
+                name_to_use = name_to_use.lower()
                 existing = pd.read_sql(f"""
                     SELECT metric_id FROM Metrics
-                    WHERE project_id = '{pid}' AND name = '{metric}' AND unit = '{unit}'
+                    WHERE project_id = '{pid}' AND LOWER(name) = '{name_to_use}' AND unit = '{unit}'
                     ORDER BY timestamp DESC LIMIT 1
                 """, conn)
                 timestamp = datetime.now().isoformat()
                 if not existing.empty:
                     metric_id = existing["metric_id"].values[0]
-                    cursor.execute("""
-                        UPDATE Metrics SET value = ?, timestamp = ? WHERE metric_id = ?
-                    """, (val, timestamp, metric_id))
+                    cursor.execute("UPDATE Metrics SET value = ?, timestamp = ? WHERE metric_id = ?",
+                        (val, timestamp, metric_id))
                 else:
                     cursor.execute("INSERT INTO Metrics VALUES (?, ?, ?, ?, ?, ?)", (
-                        str(uuid.uuid4()), pid, metric, val, unit, timestamp
+                        str(uuid.uuid4()), pid, name_to_use, val, unit, timestamp
                     ))
                 conn.commit()
                 st.success("Metric recorded!")
@@ -98,6 +96,7 @@ elif tab == "📥 Metrics":
         st.dataframe(metrics)
 
 elif tab == "🧠 GPT Summary":
+    api_key = st.text_input("OpenAI API Key", type="password")
     df = pd.read_sql("SELECT * FROM Projects", conn)
     if df.empty:
         st.warning("No projects found.")
@@ -113,7 +112,7 @@ elif tab == "🧠 GPT Summary":
             summary_text += f"{row['name']}: {row['value']} {row['unit']} on {row['timestamp']}\n"
         if st.button("🧠 Summarize with GPT"):
             try:
-                client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                client = openai.OpenAI(api_key=api_key)
                 response = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": summary_text}],
@@ -126,44 +125,15 @@ elif tab == "🧠 GPT Summary":
                 ))
                 conn.commit()
             except Exception as e:
-                st.error("OpenAI error or key missing.")
+                st.error("OpenAI error: " + str(e))
 
 elif tab == "🤖 Bot Console":
     bots = pd.read_sql("SELECT * FROM Bots", conn)
     st.dataframe(bots if not bots.empty else pd.DataFrame(columns=["bot_id", "project_id", "name", "status", "last_checkin"]))
 
 elif tab == "📜 Logs":
-    logs = pd.read_sql("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
-    st.dataframe(logs)
-
-elif tab == "🛎 Alerts":
-    alerts = pd.read_sql("SELECT * FROM Alerts ORDER BY triggered_at DESC", conn)
-    st.dataframe(alerts)
-
-elif tab == "⚙️ Alert Rules":
-    df = pd.read_sql("SELECT * FROM Projects", conn)
-    if df.empty:
-        st.warning("No projects yet.")
-    else:
-        project = st.selectbox("Choose Project", df["name"])
-        pid = df[df["name"] == project]["project_id"].values[0]
-        metric = st.text_input("Metric Name").strip().lower()
-        condition = st.selectbox("Condition", [">", "<", ">=", "<=", "=="])
-        threshold = st.number_input("Threshold")
-        message = st.text_input("Alert Message")
-        if st.button("Save Rule"):
-            val = pd.read_sql(f"""
-                SELECT value FROM Metrics WHERE project_id = '{pid}' AND name = '{metric}'
-                ORDER BY timestamp DESC LIMIT 1
-            """, conn)
-            if not val.empty:
-                last_val = val["value"].values[0]
-                if eval(f"{last_val} {condition} {threshold}"):
-                    cursor.execute("INSERT INTO Alerts VALUES (?, ?, ?, ?, ?, ?, ?)", (
-                        str(uuid.uuid4()), pid, metric, condition,
-                        threshold, message, datetime.now().isoformat()
-                    ))
-                    conn.commit()
-                    st.success("Alert triggered and saved.")
-                else:
-                    st.info("Condition not met yet.")
+    try:
+        logs = pd.read_sql("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
+        st.dataframe(logs)
+    except Exception as e:
+        st.error(f"Failed to load logs: {str(e)}")
