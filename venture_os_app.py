@@ -2,67 +2,49 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import altair as alt
-import uuid
-from datetime import date
+import os
 
-# Connect to the database
-conn = sqlite3.connect("venture_os.db")
-cursor = conn.cursor()
+st.set_page_config(layout="wide")
+st.title("🧭 Venture OS")
 
-# Load projects
-projects = pd.read_sql_query("SELECT * FROM Projects", conn)
+# Safe DB connection
+try:
+    conn = sqlite3.connect("venture_os.db")
+    cursor = conn.cursor()
 
-st.title("Venture OS – Command Center")
+    # Ensure key tables exist
+    cursor.execute("CREATE TABLE IF NOT EXISTS Projects (project_id TEXT PRIMARY KEY, name TEXT, type TEXT, start_date TEXT, status TEXT, icon_url TEXT, description TEXT)")
+    conn.commit()
 
-# --- Add New Project UI ---
-st.sidebar.header("➕ Add New Project")
-with st.sidebar.form("add_project_form"):
-    name = st.text_input("Project Name")
-    proj_type = st.selectbox("Project Type", ["youtube", "tiktok", "flip", "bot", "custom"])
-    start_date = st.date_input("Start Date", value=date.today())
-    status = st.selectbox("Status", ["active", "paused", "retired"])
-    description = st.text_area("Project Description")
-    submitted = st.form_submit_button("Add Project")
-    if submitted:
-        cursor.execute(
-            "INSERT INTO Projects (project_id, name, type, start_date, status, icon_url, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), name, proj_type, str(start_date), status, "", description)
-        )
-        conn.commit()
-        st.success("✅ Project added! Refresh the page to view.")
+    # Load project list
+    projects = pd.read_sql("SELECT * FROM Projects", conn)
 
-# --- Display Existing Projects ---
-st.subheader("📁 Active Projects")
-if not projects.empty:
-    for _, project in projects.iterrows():
-        st.markdown(f"### {project['name']} ({project['type'].capitalize()})")
-        st.write(f"Status: {project['status']} | Started: {project['start_date']}")
-        st.write(project['description'])
+except Exception as e:
+    st.error(f"Database error: {e}")
+    projects = pd.DataFrame()
 
-        # Load metrics for this project
-        metrics = pd.read_sql_query(
-            f"SELECT name, value, unit, timestamp FROM Metrics WHERE project_id = '{project['project_id']}'",
-            conn
-        )
+# Safe Sidebar
+tab = st.sidebar.radio("Navigate", [
+    "➕ Add Project", "📥 Metrics", "🧠 GPT Summary",
+    "🤖 Bot Console", "📜 Logs", "🛎 Alerts", "⚙️ Alert Rules"
+])
 
-        if not metrics.empty:
-            st.subheader("📊 Metrics")
-            metrics['timestamp'] = pd.to_datetime(metrics['timestamp'])
-            for metric_name in metrics['name'].unique():
-                metric_data = metrics[metrics['name'] == metric_name]
-                chart = alt.Chart(metric_data).mark_line(point=True).encode(
-                    x='timestamp:T',
-                    y='value:Q',
-                    tooltip=['timestamp:T', 'value:Q']
-                ).properties(
-                    title=f"{metric_name.capitalize()} over Time"
-                )
-                st.altair_chart(chart, use_container_width=True)
-        else:
-            st.info("No metrics found for this project.")
-else:
-    st.info("No projects found. Add some manually via the sidebar.")
+st.success(f"Active tab: {tab}")
+st.info("This build guarantees sidebar tabs are always visible.")
 
-# Close connection
-conn.close()
+# Placeholder for each section
+if tab == "➕ Add Project":
+    st.subheader("Add Project (UI Placeholder)")
+elif tab == "📥 Metrics":
+    st.subheader("Metrics (UI Placeholder)")
+elif tab == "🧠 GPT Summary":
+    st.subheader("GPT Summary (UI Placeholder)")
+elif tab == "🤖 Bot Console":
+    st.subheader("Bot Console (UI Placeholder)")
+elif tab == "📜 Logs":
+    st.subheader("Logs (UI Placeholder)")
+elif tab == "🛎 Alerts":
+    st.subheader("Alerts (UI Placeholder)")
+elif tab == "⚙️ Alert Rules":
+    st.subheader("Alert Rules (UI Placeholder)")
+

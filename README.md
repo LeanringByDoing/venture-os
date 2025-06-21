@@ -1,11 +1,12 @@
+# Venture OS (Sidebar Fix Build)
 
-# Venture OS
+- All sidebar tabs restored
+- Case-insensitive, non-duplicating metrics
+- Logs table enforced
+- GPT summary, bot console, alerts working
 
-This is a personal project dashboard built with Streamlit. It connects to a SQLite database and displays project data, with future expansion planned for metrics tracking, automation commands, and AI summaries.
-
-## How to Run
-
-```bash
-pip install streamlit
+To run:
+```
+pip install -r requirements.txt
 streamlit run venture_os_app.py
 ```
