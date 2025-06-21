@@ -1,1 +1,1 @@
-Final corrected Venture OS with GPT key, dropdown metrics, alert system removed, and logs fixed.
+IDs hidden, units autofill, logs fixed. Latest stable build.

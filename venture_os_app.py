@@ -13,6 +13,7 @@ st.title("🧭 Venture OS")
 conn = sqlite3.connect("venture_os.db", check_same_thread=False)
 cursor = conn.cursor()
 
+# Ensure tables
 cursor.execute("""CREATE TABLE IF NOT EXISTS Projects (
     project_id TEXT PRIMARY KEY,
     name TEXT, type TEXT, start_date TEXT,
@@ -70,12 +71,16 @@ elif tab == "📥 Metrics":
         if metric == "(New Metric)":
             new_metric = st.text_input("Enter New Metric").strip().lower()
         name_to_use = new_metric if new_metric else metric
+        name_to_use = name_to_use.lower()
+
+        # Auto unit logic
+        auto_unit = "$" if "profit" in name_to_use or "cost" in name_to_use else ""
+
         with st.form("add_metric_form"):
             val = st.number_input("Value", step=1.0)
-            unit = st.text_input("Unit (e.g., views, dollars)")
+            unit = st.text_input("Unit", value=auto_unit)
             submitted = st.form_submit_button("Submit")
             if submitted:
-                name_to_use = name_to_use.lower()
                 existing = pd.read_sql(f"""
                     SELECT metric_id FROM Metrics
                     WHERE project_id = '{pid}' AND LOWER(name) = '{name_to_use}' AND unit = '{unit}'
@@ -92,7 +97,8 @@ elif tab == "📥 Metrics":
                     ))
                 conn.commit()
                 st.success("Metric recorded!")
-        metrics = pd.read_sql(f"SELECT * FROM Metrics WHERE project_id = '{pid}'", conn)
+
+        metrics = pd.read_sql(f"SELECT name, value, unit, timestamp FROM Metrics WHERE project_id = '{pid}'", conn)
         st.dataframe(metrics)
 
 elif tab == "🧠 GPT Summary":
@@ -128,12 +134,12 @@ elif tab == "🧠 GPT Summary":
                 st.error("OpenAI error: " + str(e))
 
 elif tab == "🤖 Bot Console":
-    bots = pd.read_sql("SELECT * FROM Bots", conn)
-    st.dataframe(bots if not bots.empty else pd.DataFrame(columns=["bot_id", "project_id", "name", "status", "last_checkin"]))
+    bots = pd.read_sql("SELECT name, status, last_checkin FROM Bots", conn)
+    st.dataframe(bots if not bots.empty else pd.DataFrame(columns=["name", "status", "last_checkin"]))
 
 elif tab == "📜 Logs":
     try:
-        logs = pd.read_sql("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
+        logs = pd.read_sql("SELECT source, message, timestamp FROM Logs ORDER BY timestamp DESC", conn)
         st.dataframe(logs)
     except Exception as e:
         st.error(f"Failed to load logs: {str(e)}")
