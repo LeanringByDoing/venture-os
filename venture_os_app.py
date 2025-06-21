@@ -10,11 +10,11 @@ import os
 st.set_page_config(layout="wide")
 st.title("🧭 Venture OS")
 
-# Safe DB connect
+# DB connection
 conn = sqlite3.connect("venture_os.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Ensure all tables exist
+# Ensure tables
 cursor.execute("""CREATE TABLE IF NOT EXISTS Projects (
     project_id TEXT PRIMARY KEY,
     name TEXT, type TEXT, start_date TEXT,
@@ -43,13 +43,11 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Alerts (
 )""")
 conn.commit()
 
-# Define sidebar first
 tab = st.sidebar.radio("Navigate", [
     "➕ Add Project", "📥 Metrics", "🧠 GPT Summary",
     "🤖 Bot Console", "📜 Logs", "🛎 Alerts", "⚙️ Alert Rules"
 ])
 
-# Now render tab contents
 if tab == "➕ Add Project":
     with st.form("add_project_form"):
         name = st.text_input("Project Name")
@@ -107,12 +105,12 @@ elif tab == "🧠 GPT Summary":
         project = st.selectbox("Pick Project", df["name"])
         pid = df[df["name"] == project]["project_id"].values[0]
         metrics = pd.read_sql(f"SELECT * FROM Metrics WHERE project_id = '{pid}'", conn)
-        summary_text = "You are a startup performance analyst. Summarize the following weekly project metrics:
-
-"
+        summary_text = (
+            "You are a startup performance analyst. "
+            "Summarize the following weekly project metrics:\n\n"
+        )
         for _, row in metrics.iterrows():
-            summary_text += f"{row['name']}: {row['value']} {row['unit']} on {row['timestamp']}
-"
+            summary_text += f"{row['name']}: {row['value']} {row['unit']} on {row['timestamp']}\n"
         if st.button("🧠 Summarize with GPT"):
             try:
                 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -135,16 +133,6 @@ elif tab == "🤖 Bot Console":
     st.dataframe(bots if not bots.empty else pd.DataFrame(columns=["bot_id", "project_id", "name", "status", "last_checkin"]))
 
 elif tab == "📜 Logs":
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS Logs (
-        log_id TEXT PRIMARY KEY,
-        project_id TEXT,
-        source TEXT,
-        message TEXT,
-        timestamp TEXT
-    )
-    """)
-    conn.commit()
     logs = pd.read_sql("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
     st.dataframe(logs)
 
