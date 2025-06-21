@@ -7,137 +7,145 @@ import uuid
 from datetime import datetime, timedelta
 import requests
 
+# --- DB Setup ---
 conn = sqlite3.connect("venture_os.db")
 cursor = conn.cursor()
-
-# Create tables if not exist
-cursor.execute("""CREATE TABLE IF NOT EXISTS Projects (
-    project_id TEXT PRIMARY KEY,
-    name TEXT, type TEXT, start_date TEXT,
-    status TEXT, icon_url TEXT, description TEXT
-)""")
-cursor.execute("""CREATE TABLE IF NOT EXISTS Metrics (
-    metric_id TEXT PRIMARY KEY,
-    project_id TEXT, name TEXT, value REAL,
-    unit TEXT, timestamp TEXT
-)""")
-cursor.execute("""CREATE TABLE IF NOT EXISTS Logs (
-    log_id TEXT PRIMARY KEY,
-    project_id TEXT, source TEXT, message TEXT,
-    timestamp TEXT
-)""")
-cursor.execute("""CREATE TABLE IF NOT EXISTS Bots (
-    bot_id TEXT PRIMARY KEY,
-    project_id TEXT, name TEXT, last_checkin TEXT,
-    status TEXT, bot_url TEXT
-)""")
-cursor.execute("""CREATE TABLE IF NOT EXISTS AutomationActions (
-    action_id TEXT PRIMARY KEY,
-    project_id TEXT, command TEXT, status TEXT,
-    response TEXT, timestamp TEXT
-)""")
-cursor.execute("""CREATE TABLE IF NOT EXISTS Alerts (
-    alert_id TEXT PRIMARY KEY,
-    project_id TEXT, type TEXT, message TEXT,
-    resolved INTEGER, timestamp TEXT
-)""")
-cursor.execute("""CREATE TABLE IF NOT EXISTS AlertRules (
-    rule_id TEXT PRIMARY KEY,
-    project_id TEXT, metric_name TEXT,
+cursor.executescript("""
+CREATE TABLE IF NOT EXISTS Projects (
+    project_id TEXT PRIMARY KEY, name TEXT, type TEXT,
+    start_date TEXT, status TEXT, icon_url TEXT, description TEXT
+);
+CREATE TABLE IF NOT EXISTS Metrics (
+    metric_id TEXT PRIMARY KEY, project_id TEXT, name TEXT,
+    value REAL, unit TEXT, timestamp TEXT
+);
+CREATE TABLE IF NOT EXISTS Logs (
+    log_id TEXT PRIMARY KEY, project_id TEXT, source TEXT,
+    message TEXT, timestamp TEXT
+);
+CREATE TABLE IF NOT EXISTS Bots (
+    bot_id TEXT PRIMARY KEY, project_id TEXT, name TEXT,
+    last_checkin TEXT, status TEXT, bot_url TEXT
+);
+CREATE TABLE IF NOT EXISTS AutomationActions (
+    action_id TEXT PRIMARY KEY, project_id TEXT, command TEXT,
+    status TEXT, response TEXT, timestamp TEXT
+);
+CREATE TABLE IF NOT EXISTS Alerts (
+    alert_id TEXT PRIMARY KEY, project_id TEXT, type TEXT,
+    message TEXT, resolved INTEGER, timestamp TEXT
+);
+CREATE TABLE IF NOT EXISTS AlertRules (
+    rule_id TEXT PRIMARY KEY, project_id TEXT, metric_name TEXT,
     threshold_type TEXT, threshold_value REAL
-)""")
+);
+""")
 conn.commit()
 
-st.set_page_config(layout="wide")
-st.title("📊 Venture OS")
+# --- Auto-seed demo if empty ---
+if pd.read_sql("SELECT COUNT(*) as count FROM Projects", conn)["count"][0] == 0:
+    pid = str(uuid.uuid4())
+    cursor.execute("INSERT INTO Projects VALUES (?, ?, ?, ?, ?, ?, ?)", (
+        pid, "Demo Project", "bot", str(datetime.now().date()), "active", "", "Auto-seeded project"
+    ))
+    cursor.execute("INSERT INTO Bots VALUES (?, ?, ?, ?, ?, ?)", (
+        str(uuid.uuid4()), pid, "Demo Bot", datetime.now().isoformat(), "offline", ""
+    ))
+    conn.commit()
 
-tab = st.sidebar.radio("Tool", [
-    "➕ Add Project", "📥 Manual Metric Entry", "🧠 GPT Summary",
-    "🤖 Bot Console", "📜 Logs", "🛎 Alerts", "⚙️ Alert Rules"
+st.set_page_config(layout="wide")
+st.title("🧭 Venture OS – Unified Command")
+
+tab = st.sidebar.radio("Navigate", [
+    "➕ Add Project", "📥 Metrics", "🧠 GPT Summary", "🤖 Bot Console",
+    "📜 Logs", "🛎 Alerts", "⚙️ Alert Rules"
 ])
 
-projects = pd.read_sql_query("SELECT * FROM Projects", conn)
+projects = pd.read_sql("SELECT * FROM Projects", conn)
 
+# --- Add Project ---
 if tab == "➕ Add Project":
-    with st.form("add_proj"):
+    with st.form("add_project"):
         name = st.text_input("Project Name")
-        proj_type = st.selectbox("Type", ["youtube", "tiktok", "bot", "product", "custom"])
+        type_ = st.selectbox("Type", ["youtube", "tiktok", "bot", "product", "custom"])
         desc = st.text_area("Description")
         status = st.selectbox("Status", ["active", "paused", "retired"])
-        url = st.text_input("Bot URL (optional)")
-        submitted = st.form_submit_button("Add")
-        if submitted:
+        bot_url = st.text_input("Bot URL (optional)")
+        if st.form_submit_button("Create"):
             pid = str(uuid.uuid4())
-            cursor.execute("INSERT INTO Projects VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (pid, name, proj_type, str(datetime.now().date()), status, "", desc))
-            cursor.execute("INSERT INTO Bots VALUES (?, ?, ?, ?, ?, ?)",
-                (str(uuid.uuid4()), pid, f"{name} Bot", datetime.now().isoformat(), "offline", url))
+            cursor.execute("INSERT INTO Projects VALUES (?, ?, ?, ?, ?, ?, ?)", (
+                pid, name, type_, str(datetime.now().date()), status, "", desc
+            ))
+            cursor.execute("INSERT INTO Bots VALUES (?, ?, ?, ?, ?, ?)", (
+                str(uuid.uuid4()), pid, f"{name} Bot", datetime.now().isoformat(), "offline", bot_url
+            ))
             conn.commit()
-            st.success("✅ Project and bot added!")
+            st.success("Project created!")
 
-elif tab == "📥 Manual Metric Entry":
-    if projects.empty:
-        st.warning("Add a project first.")
-    else:
-        with st.form("metrics_form"):
-            project_name = st.selectbox("Project", projects["name"])
+# --- Metrics ---
+elif tab == "📥 Metrics":
+    if not projects.empty:
+        with st.form("metrics"):
+            pname = st.selectbox("Project", projects["name"])
             metric = st.text_input("Metric Name")
-            value = st.number_input("Value", step=1.0)
+            val = st.number_input("Value")
             unit = st.text_input("Unit")
-            submitted = st.form_submit_button("Submit")
-            if submitted:
-                pid = projects[projects["name"] == project_name]["project_id"].values[0]
-                cursor.execute("INSERT INTO Metrics VALUES (?, ?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), pid, metric, value, unit, datetime.now().isoformat()))
+            if st.form_submit_button("Save"):
+                pid = projects[projects["name"] == pname]["project_id"].values[0]
+                cursor.execute("INSERT INTO Metrics VALUES (?, ?, ?, ?, ?, ?)", (
+                    str(uuid.uuid4()), pid, metric, val, unit, datetime.now().isoformat()
+                ))
                 conn.commit()
-                st.success("Metric saved.")
+                st.success("Saved.")
 
+# --- GPT Summary ---
 elif tab == "🧠 GPT Summary":
     key = st.text_input("OpenAI API Key", type="password")
     if key:
         client = openai.OpenAI(api_key=key)
         week_ago = (datetime.now() - timedelta(days=7)).isoformat()
-        df = pd.read_sql_query(f"""
+        df = pd.read_sql(f"""
             SELECT P.name as project_name, M.name, M.value
             FROM Metrics M JOIN Projects P ON M.project_id = P.project_id
             WHERE M.timestamp > '{week_ago}'
         """, conn)
         if not df.empty:
-            prompt = "Summarize weekly performance:\n"
-            for proj in df["project_name"].unique():
-                subset = df[df["project_name"] == proj]
+            prompt = "Summarize weekly metrics:\n"
+            for project in df["project_name"].unique():
+                subset = df[df["project_name"] == project]
                 for _, row in subset.iterrows():
-                    prompt += f"{proj} - {row['name']}: {row['value']}\n"
+                    prompt += f"{project} - {row['name']}: {row['value']}\n"
             try:
-                res = client.chat.completions.create(
+                response = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=300
                 )
-                summary = res.choices[0].message.content
+                summary = response.choices[0].message.content
                 st.text_area("GPT Summary", summary, height=200)
                 if st.button("📥 Save to Logs"):
-                    cursor.execute("INSERT INTO Logs VALUES (?, ?, ?, ?, ?)",
-                        (str(uuid.uuid4()), None, "gpt", summary, datetime.now().isoformat()))
+                    cursor.execute("INSERT INTO Logs VALUES (?, ?, ?, ?, ?)", (
+                        str(uuid.uuid4()), None, "gpt", summary, datetime.now().isoformat()
+                    ))
                     conn.commit()
-                    st.success("Summary saved.")
+                    st.success("Saved.")
             except Exception as e:
-                st.error(f"GPT error: {e}")
+                st.error(f"GPT Error: {e}")
         else:
             st.info("No recent metrics.")
 
+# --- Bot Console ---
 elif tab == "🤖 Bot Console":
-    bots = pd.read_sql_query("SELECT * FROM Bots", conn)
-    for _, row in bots.iterrows():
-        st.subheader(row['name'])
-        with st.form(f"bot_{row['bot_id']}"):
-            cmd = st.text_input("Command", key=row["bot_id"])
-            submitted = st.form_submit_button("Send")
-            if submitted:
+    bots = pd.read_sql("SELECT * FROM Bots", conn)
+    for _, bot in bots.iterrows():
+        st.subheader(bot["name"])
+        with st.form(f"bot_{bot['bot_id']}"):
+            cmd = st.text_input("Command", key=bot["bot_id"])
+            if st.form_submit_button("Send"):
                 ts = datetime.now().isoformat()
                 try:
-                    if row['bot_url']:
-                        r = requests.post(row['bot_url'], json={"command": cmd}, timeout=5)
+                    if bot["bot_url"]:
+                        r = requests.post(bot["bot_url"], json={"command": cmd}, timeout=5)
                         reply = r.text
                         status = "success" if r.ok else "error"
                     else:
@@ -146,60 +154,63 @@ elif tab == "🤖 Bot Console":
                 except Exception as e:
                     reply = str(e)
                     status = "failed"
-                cursor.execute("INSERT INTO AutomationActions VALUES (?, ?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), row["project_id"], cmd, status, reply, ts))
-                cursor.execute("UPDATE Bots SET last_checkin = ?, status = ? WHERE bot_id = ?",
-                    (ts, status, row["bot_id"]))
+                cursor.execute("INSERT INTO AutomationActions VALUES (?, ?, ?, ?, ?, ?)", (
+                    str(uuid.uuid4()), bot["project_id"], cmd, status, reply, ts
+                ))
+                cursor.execute("UPDATE Bots SET last_checkin = ?, status = ? WHERE bot_id = ?", (
+                    ts, status, bot["bot_id"]
+                ))
                 conn.commit()
-                st.success(f"Bot replied: {reply}")
+                st.success(f"Bot Reply: {reply}")
 
+# --- Logs ---
 elif tab == "📜 Logs":
-    try:
-        df = pd.read_sql_query("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
-        st.dataframe(df, use_container_width=True)
-    except Exception:
-        st.warning("No Logs yet.")
+    logs = pd.read_sql("SELECT * FROM Logs ORDER BY timestamp DESC", conn)
+    st.dataframe(logs, use_container_width=True)
 
+# --- Alerts ---
 elif tab == "🛎 Alerts":
-    try:
-        df = pd.read_sql_query("SELECT * FROM Alerts ORDER BY timestamp DESC", conn)
-        for _, r in df.iterrows():
-            msg = f"{r['timestamp']} — {r['message']}"
-            st.warning(msg if not r['resolved'] else f"✅ {msg}")
-    except:
-        st.info("No alerts.")
+    alerts = pd.read_sql("SELECT * FROM Alerts ORDER BY timestamp DESC", conn)
+    for _, row in alerts.iterrows():
+        alert = f"{row['timestamp']} – {row['message']}"
+        st.warning("✅ " + alert if row["resolved"] else alert)
 
+# --- Alert Rules ---
 elif tab == "⚙️ Alert Rules":
-    if projects.empty:
-        st.info("No projects.")
-    else:
-        with st.form("rule_form"):
-            project = st.selectbox("Project", projects["name"])
+    if not projects.empty:
+        with st.form("add_rule"):
+            pname = st.selectbox("Project", projects["name"])
             metric = st.text_input("Metric Name")
-            trigger = st.selectbox("Trigger", ["above", "below"])
-            value = st.number_input("Threshold", step=1.0)
+            rule = st.selectbox("Trigger", ["above", "below"])
+            threshold = st.number_input("Value", step=1.0)
             if st.form_submit_button("Add Rule"):
-                pid = projects[projects["name"] == project]["project_id"].values[0]
-                cursor.execute("INSERT INTO AlertRules VALUES (?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), pid, metric, trigger, value))
+                pid = projects[projects["name"] == pname]["project_id"].values[0]
+                cursor.execute("INSERT INTO AlertRules VALUES (?, ?, ?, ?, ?)", (
+                    str(uuid.uuid4()), pid, metric, rule, threshold
+                ))
                 conn.commit()
                 st.success("Rule added.")
 
-# Auto-trigger alert checks
-rules = pd.read_sql_query("SELECT * FROM AlertRules", conn)
+# --- Trigger Checks ---
+rules = pd.read_sql("SELECT * FROM AlertRules", conn)
 for _, rule in rules.iterrows():
-    m = pd.read_sql_query(f"""
+    q = f"""
         SELECT * FROM Metrics WHERE project_id = '{rule['project_id']}'
         AND name = '{rule['metric_name']}' ORDER BY timestamp DESC LIMIT 1
-    """, conn)
-    if not m.empty:
-        val = m['value'].values[0]
-        tval = rule['threshold_value']
-        if (rule['threshold_type'] == 'above' and val > tval) or            (rule['threshold_type'] == 'below' and val < tval):
+    """
+    df = pd.read_sql(q, conn)
+    if not df.empty:
+        val = df["value"].values[0]
+        triggered = (
+            (rule["threshold_type"] == "above" and val > rule["threshold_value"]) or
+            (rule["threshold_type"] == "below" and val < rule["threshold_value"])
+        )
+        if triggered:
             cursor.execute("INSERT INTO Alerts VALUES (?, ?, ?, ?, ?, ?)", (
-                str(uuid.uuid4()), rule['project_id'], "threshold",
-                f"{rule['metric_name']} {rule['threshold_type']} {tval} (was {val})",
-                0, datetime.now().isoformat()))
+                str(uuid.uuid4()), rule["project_id"], "threshold",
+                f"{rule['metric_name']} {rule['threshold_type']} {rule['threshold_value']} (was {val})",
+                0, datetime.now().isoformat()
+            ))
             conn.commit()
 
 conn.close()
