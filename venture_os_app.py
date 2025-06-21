@@ -1,7 +1,7 @@
 
 # [... full Venture OS app code omitted for brevity, here's the Logs section with fix:]
 
-elif tab == "📜 Logs":
+if tab == "📜 Logs":
     # Ensure Logs table exists before reading
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS Logs (
