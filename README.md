@@ -1,1 +1,1 @@
-IDs hidden, units autofill, logs fixed. Latest stable build.
+Adds charts tab to visualize metric history.
