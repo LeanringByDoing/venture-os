@@ -1,3 +1,4 @@
+
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -11,9 +12,8 @@ st.title("🧭 Venture OS")
 conn = sqlite3.connect("venture_os.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Create tables if they don't exist
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS Projects (
+# Ensure tables exist
+cursor.execute("""CREATE TABLE IF NOT EXISTS Projects (
     project_id TEXT PRIMARY KEY,
     name TEXT,
     type TEXT,
@@ -21,46 +21,44 @@ CREATE TABLE IF NOT EXISTS Projects (
     status TEXT,
     icon_url TEXT,
     description TEXT
-)
-""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS Metrics (
+)""")
+cursor.execute("""CREATE TABLE IF NOT EXISTS Metrics (
     metric_id TEXT PRIMARY KEY,
     project_id TEXT,
     name TEXT,
     value REAL,
     unit TEXT,
     timestamp TEXT
-)
-""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS Logs (
+)""")
+cursor.execute("""CREATE TABLE IF NOT EXISTS Logs (
     log_id TEXT PRIMARY KEY,
     project_id TEXT,
     source TEXT,
     message TEXT,
     timestamp TEXT
-)
-""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS Bots (
+)""")
+cursor.execute("""CREATE TABLE IF NOT EXISTS Bots (
     bot_id TEXT PRIMARY KEY,
     project_id TEXT,
     name TEXT,
     status TEXT,
     last_checkin TEXT
-)
-""")
-
+)""")
+cursor.execute("""CREATE TABLE IF NOT EXISTS Alerts (
+    alert_id TEXT PRIMARY KEY,
+    project_id TEXT,
+    metric_name TEXT,
+    condition TEXT,
+    threshold REAL,
+    last_triggered TEXT
+)""")
 conn.commit()
 
 tab = st.sidebar.radio("Navigate", [
-    "➕ Add Project", "📥 Metrics", "📊 Charts", "🧠 GPT Summary", "🤖 Bot Console", "📜 Logs"
+    "➕ Add Project", "📥 Metrics", "📊 Charts", "🗂 Project View", "🧠 GPT Summary", "🤖 Bot Console", "📜 Logs"
 ])
 
+# Add Project Tab
 if tab == "➕ Add Project":
     with st.form("add_project_form"):
         name = st.text_input("Project Name")
@@ -77,6 +75,7 @@ if tab == "➕ Add Project":
             conn.commit()
             st.success(f"Project '{name}' added!")
 
+# Metrics Tab
 elif tab == "📥 Metrics":
     df = pd.read_sql("SELECT * FROM Projects", conn)
     if df.empty:
@@ -120,6 +119,7 @@ elif tab == "📥 Metrics":
         metrics = pd.read_sql(f"SELECT name, value, unit, timestamp FROM Metrics WHERE project_id = '{pid}'", conn)
         st.dataframe(metrics)
 
+# Charts Tab
 elif tab == "📊 Charts":
     df = pd.read_sql("SELECT * FROM Projects", conn)
     if df.empty:
@@ -138,6 +138,24 @@ elif tab == "📊 Charts":
             filtered = filtered.sort_values("timestamp")
             st.line_chart(filtered.set_index("timestamp")["value"])
 
+# Project View Tab
+elif tab == "🗂 Project View":
+    df = pd.read_sql("SELECT * FROM Projects", conn)
+    if df.empty:
+        st.info("No projects available.")
+    else:
+        project = st.selectbox("Select Project", df["name"])
+        pid = df[df["name"] == project]["project_id"].values[0]
+        st.subheader(project)
+        st.markdown(f"**Status**: {df[df['project_id'] == pid]['status'].values[0]}")
+        st.markdown(f"**Description**: {df[df['project_id'] == pid]['description'].values[0]}")
+        metrics = pd.read_sql(f"SELECT name, value, unit, timestamp FROM Metrics WHERE project_id = '{pid}'", conn)
+        if metrics.empty:
+            st.info("No metrics yet.")
+        else:
+            st.dataframe(metrics)
+
+# GPT Summary Tab
 elif tab == "🧠 GPT Summary":
     api_key = st.text_input("OpenAI API Key", type="password")
     df = pd.read_sql("SELECT * FROM Projects", conn)
@@ -170,10 +188,12 @@ elif tab == "🧠 GPT Summary":
             except Exception as e:
                 st.error("OpenAI error: " + str(e))
 
+# Bot Console
 elif tab == "🤖 Bot Console":
     bots = pd.read_sql("SELECT name, status, last_checkin FROM Bots", conn)
     st.dataframe(bots if not bots.empty else pd.DataFrame(columns=["name", "status", "last_checkin"]))
 
+# Logs
 elif tab == "📜 Logs":
     try:
         logs = pd.read_sql("SELECT source, message, timestamp FROM Logs ORDER BY timestamp DESC", conn)
